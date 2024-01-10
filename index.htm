@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport"content="initial-scale=1,maximum-scale=1,user-scalable=no,width=device-width">
+		<link rel="icon"href="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+		<title>🌎</title>
+		<style>
+			@keyframes fade{
+				from{
+					opacity:0;
+				}
+			}
+			:root{
+				--bg:#3f5e31;
+				--fg:#dbc8ab;
+				--pad:1rem;
+				--rad:1rem;
+				--anim:fade .66s both;
+				--bord:.2rem solid;
+				--shado:0 0 1rem Black;
+				background-color:Black;
+				color:var(--fg);
+				font-family:'Impact',sans-serif;
+				font-size:18pt;
+				text-align:center;
+				user-select:none;
+			}
+			body{
+				margin:0;
+			}
+			button{
+				animation:var(--anim);
+				animation-delay:.33s;
+				background-color:var(--bg);
+				border:var(--bord);
+				border-radius:var(--rad);
+				box-shadow:var(--shado),inset var(--shado);
+				color:inherit;
+				cursor:pointer;
+				font-family:inherit;
+				font-size:inherit;
+				letter-spacing:.1rem;
+				margin:1rem;
+				padding:var(--pad);
+				text-shadow:var(--shado);
+			}button:focus,button:hover{
+				background-image:radial-gradient(ellipse,Goldenrod,transparent);
+				outline:none;
+			}
+			header{
+				background-image:url('opr.png'),radial-gradient(ellipse,Black 30%,transparent 70%);
+				background-position:center;
+				background-repeat:no-repeat;
+				background-size:contain;
+				display:none;
+				height:100vmin;
+				position:fixed;
+				width:100vmin;
+			}
+			main{
+				align-items:center;
+				animation:var(--anim);
+				background-image:url('wall.webp');
+				background-position:center;
+				background-repeat:no-repeat;
+				background-size:cover;
+				display:flex;
+				flex-direction:column;
+				height:100vh;
+				justify-content:center;
+			}
+			video{
+				animation:var(--anim);
+				animation-delay:.18s;
+				background-color:Black;
+				border:var(--bord);
+				border-radius:var(--rad);
+				box-shadow:var(--shado);
+				height:36vmin;
+				width:62vmin;
+				z-index:99;
+			}
+			.tv{
+				cursor:none;
+			}.tv button{
+				display:none;
+			}.tv header{
+				display:block;
+			}.tv video{
+				background-color:transparent;
+				border:none;
+				border-radius:0;
+				display:none;
+				height:100%;
+				width:100%;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<header></header>
+			<video autoplay muted></video>
+			<button>SHARE MY SCREEN</button>
+		</main>
+		<script>
+
+			const share=document.getElementsByTagName('button')[0]
+			const sock=new WebSocket('wss://radstar.net:9123')
+			const tv=document.getElementsByTagName('video')[0]
+			let liveStream,peer
+
+			async function Streamer(){
+				try{
+					liveStream=await navigator.mediaDevices.getDisplayMedia({video:{displaySurface:'monitor'}})
+					tv.srcObject=liveStream
+					share.textContent='STOP SHARING'
+					peer=new RTCPeerConnection()
+					peer.addTrack(liveStream.getVideoTracks()[0],liveStream)
+					onIce(peer)
+					const offer=await peer.createOffer()
+					setLocalD(peer,offer)
+				}catch(err){
+					console.error(err)
+				}
+			}
+			async function Watcher(msg){
+				peer=new RTCPeerConnection()
+				peer.ontrack=track=>{
+					console.log(track)
+					tv.srcObject=track.streams[0]
+					tv.style.display='block'
+					tv.play()
+				}
+				onIce(peer)
+
+				await peer.setRemoteDescription(msg)
+				const answer=await peer.createAnswer()
+				setLocalD(peer,answer)
+
+			}
+
+			async function setLocalD(peer,ansfer){
+				await peer.setLocalDescription(ansfer)
+				sock.send(JSON.stringify(ansfer))
+			}
+
+			function onIce(peer){
+				peer.onicecandidate=ice=>{
+					if(ice.candidate){
+						sock.send(JSON.stringify(ice.candidate))
+					}
+				}
+			}
+
+			sock.onclose=()=>{
+				console.log('Goodbye!')
+			}
+			sock.onmessage=message=>{
+				console.log(message);
+				const msg=JSON.parse(message.data)
+				switch(msg.type){
+					case'answer':
+						peer.setRemoteDescription(msg)
+						break
+					case'offer':
+						Watcher(msg)
+						break
+					case'stop':
+						tv.style.display='none'
+						break
+					default:
+						if(msg.candidate){
+							peer.addIceCandidate(msg)
+						}
+				}
+			}
+			sock.onopen=()=>{
+				console.log('Hello!')
+			}
+
+			share.onclick=()=>{
+				if(liveStream){
+					liveStream.getTracks().forEach(track=>track.stop())
+					sock.send(JSON.stringify({type:'stop'}))
+					peer.close()
+					liveStream=null
+					share.blur()
+					share.textContent='SHARE MY SCREEN'
+				}else{
+					Streamer()
+				}
+			}
+
+			if(location.hash){
+				console.log('Watching...')
+				document.body.parentElement.classList.toggle('tv')
+			}else{
+				console.log('Streaming...')
+			}
+
+		</script>
+	</body>
+</html>
