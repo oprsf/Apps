@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport"content="initial-scale=1,maximum-scale=1,user-scalable=no,width=device-width">
+		<link rel="icon"href="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+		<title>🌎</title>
+		<style>
+			@font-face {
+				font-family:'Font';
+				src:url('https://fonts.gstatic.com/s/anton/v25/1Ptgg87LROyAm3Kz-C8.woff2');
+			}
+			@keyframes fade{
+				from{
+					opacity:0;
+				}
+			}
+			:root{
+				--bg:#3f5e31;
+				--fg:#dbc8ab;
+				--pad:1rem;
+				--rad:1rem;
+				--anim:fade .66s both;
+				--bord:.2rem solid;
+				--shado:0 0 1rem Black;
+				background-color:Black;
+				color:var(--fg);
+				font-family:'Impact','Font',sans-serif;
+				font-size:18pt;
+				text-align:center;
+				user-select:none;
+			}
+			body{
+				margin:0;
+			}
+			button{
+				background-color:var(--bg);
+				border:var(--bord);
+				border-radius:var(--rad);
+				box-shadow:var(--shado),inset var(--shado);
+				color:inherit;
+				cursor:pointer;
+				font-family:inherit;
+				font-size:inherit;
+				letter-spacing:.1rem;
+				margin:1rem;
+				padding:var(--pad);
+				text-shadow:var(--shado);
+			}button:focus,button:hover{
+				background-image:radial-gradient(ellipse,Goldenrod,transparent);
+				outline:none;
+			}
+			footer{
+				bottom:2rem;
+				display:none;
+				font-size:1rem;
+				left:50%;
+				position:fixed;
+				text-shadow:0 0 3pt Black;
+				text-transform:uppercase;
+				transform:translateX(-50%);
+			}footer>span{
+				color:White;
+				display:block;
+				font-size:3rem;
+				text-transform:none;
+			}
+			header{
+				background-image:url('opr.png'),radial-gradient(ellipse,Black 30%,transparent 70%);
+				background-position:center;
+				background-repeat:no-repeat;
+				background-size:contain;
+				display:none;
+				height:100vmin;
+				position:fixed;
+				width:100vmin;
+			}
+			main{
+				align-items:center;
+				/* animation:var(--anim); */
+				background-image:url('wall.webp');
+				background-position:center;
+				background-repeat:no-repeat;
+				background-size:cover;
+				display:flex;
+				flex-direction:column;
+				height:100vh;
+				justify-content:center;
+			}
+			video{
+				background-color:Black;
+				border:var(--bord);
+				border-radius:var(--rad);
+				box-shadow:var(--shado);
+				height:36vmin;
+				margin:1rem;
+				width:62vmin;
+				z-index:99;
+			}
+			.tv{
+				cursor:none;
+			}.tv button{
+				display:none;
+			}.tv footer{
+				display:block;
+			}.tv header{
+				display:block;
+			}.tv video{
+				background-color:transparent;
+				border:none;
+				border-radius:0;
+				opacity:0;
+				height:100%;
+				transition:opacity .67s;
+				width:100%;
+			}
+			@media(orientation:portrait){
+				button:first-of-type,video{
+					display:none;
+				}button:last-of-type{
+					display:block;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<header></header>
+			<video autoplay muted></video>
+			<button>SHARE MY SCREEN</button>
+			<button>JOIN CALL</button>
+			<footer>Get started at <span>oprsf.ddns.net</span>on your phone or laptop</footer>
+		</main>
+		<script>
+
+			const share=document.getElementsByTagName('button')[0]
+			const tv=document.getElementsByTagName('video')[0]
+			const zoom=document.getElementsByTagName('button')[1]
+			let liveStream,peer,sock
+
+			newSock()
+
+			async function Streamer(){
+				try{
+					liveStream=await navigator.mediaDevices.getDisplayMedia({video:{displaySurface:'monitor'}})
+					tv.srcObject=liveStream
+					share.textContent='STOP SHARING'
+					newPeer()
+					peer.addTrack(liveStream.getVideoTracks()[0],liveStream)
+					onIce(peer)
+					const offer=await peer.createOffer()
+					setLocalD(peer,offer)
+				}catch(err){
+					console.error(err)
+				}
+			}
+			async function Watcher(msg){
+				newPeer()
+				peer.ontrack=track=>{
+					console.log(track)
+					tv.srcObject=track.streams[0]
+					tv.oncanplay=()=>{
+						tv.style.opacity=1
+						tv.play()
+					}
+				}
+				onIce(peer)
+
+				await peer.setRemoteDescription(msg)
+				const answer=await peer.createAnswer()
+				setLocalD(peer,answer)
+
+			}
+
+			async function setLocalD(peer,ansfer){
+				await peer.setLocalDescription(ansfer)
+				sock.send(JSON.stringify(ansfer))
+			}
+
+			function onIce(peer){
+				peer.onicecandidate=ice=>{
+					if(ice.candidate){
+						sock.send(JSON.stringify(ice.candidate))
+					}
+				}
+			}
+
+			function newPeer(){
+				if(peer)peer.close()
+				peer=new RTCPeerConnection()
+			}
+
+			function newSock(){
+				try{
+					sock=new WebSocket('ws://localhost:9123')
+					sock.onerror=()=>{
+						newSock()
+					}
+				}catch{
+					setInterval(()=>{
+						newSock()
+					},3000)
+				}
+			}
+
+			sock.onclose=()=>{
+				console.log('Goodbye!')
+				newSock()
+			}
+			sock.onmessage=message=>{
+				console.log(message);
+				const msg=JSON.parse(message.data)
+				switch(msg.type){
+					case'answer':
+						peer.setRemoteDescription(msg)
+						break
+					case'offer':
+						if(location.hash)Watcher(msg)
+						break
+					case'stop':
+						location.reload()
+						break
+					case'video':
+						console.log(msg.url)
+						window.open(msg.url)
+						break
+					default:
+						if(msg.candidate){
+							peer.addIceCandidate(msg)
+						}
+				}
+			}
+			sock.onopen=()=>{
+				console.log('Hello!')
+			}
+
+			share.onclick=()=>{
+				if(liveStream){
+					liveStream.getTracks().forEach(track=>track.stop())
+					sock.send(JSON.stringify({type:'stop'}))
+					location.reload()
+				}else{
+					Streamer()
+				}
+			}
+
+			zoom.onclick=()=>{
+				const oldURL=prompt('Enter your invite link:')
+				if(oldURL){
+					if(oldURL.includes('messenger')){
+						const regx=new RegExp("j/([0-9]+)\\?pwd=([^\\s]+)")
+						if(regx.test(oldURL)){
+							const newURL='https://app.zoom.us/wc/'+RegExp.$1+'/join?pwd='+RegExp.$2+'&from=pwa'
+							console.log(newURL)
+							sock.send(JSON.stringify({type:'video',url:newURL}))
+						}
+					}
+					if(oldURL.includes('teams')){
+						const regx=new RegExp("/([0-9]+)\\?p=(.*?)&*")
+						if(regx.test(oldURL)){
+							const newURL='https://teams.live.com/_#/meet/'+RegExp.$1+'?p='+RegExp.$2+'&launchType=web'
+							console.log(newURL)
+							sock.send(JSON.stringify({type:'video',url:newURL}))
+						}
+					}
+					if(oldURL.includes('zoom')){
+						const regx=new RegExp("j/([0-9]+)\\?pwd=([^\\s]+)")
+						if(regx.test(oldURL)){
+							const newURL='https://app.zoom.us/wc/'+RegExp.$1+'/join?pwd='+RegExp.$2+'&from=pwa'
+							console.log(newURL)
+							sock.send(JSON.stringify({type:'video',url:newURL}))
+						}
+					}
+				}
+			}
+
+			if(location.hash){
+				console.log('Watcher...')
+				document.body.parentElement.classList.toggle('tv')
+				setInterval(()=>{
+					if(tv.paused){
+						location.reload()
+					}
+				},10000)
+			}else{
+				console.log('Streamer...')
+			}
+
+		</script>
+	</body>
+</html>
