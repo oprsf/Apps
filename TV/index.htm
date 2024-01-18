@@ -6,6 +6,10 @@
 		<link rel="icon"href="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
 		<title>🌎</title>
 		<style>
+			@font-face {
+				font-family:'Font';
+				src:url('https://fonts.gstatic.com/s/anton/v25/1Ptgg87LROyAm3Kz-C8.woff2');
+			}
 			@keyframes fade{
 				from{
 					opacity:0;
@@ -21,7 +25,7 @@
 				--shado:0 0 1rem Black;
 				background-color:Black;
 				color:var(--fg);
-				font-family:'Impact',sans-serif;
+				font-family:'Impact','Font',sans-serif;
 				font-size:18pt;
 				text-align:center;
 				user-select:none;
@@ -30,8 +34,6 @@
 				margin:0;
 			}
 			button{
-				animation:var(--anim);
-				animation-delay:.33s;
 				background-color:var(--bg);
 				border:var(--bord);
 				border-radius:var(--rad);
@@ -48,6 +50,21 @@
 				background-image:radial-gradient(ellipse,Goldenrod,transparent);
 				outline:none;
 			}
+			footer{
+				bottom:2rem;
+				display:none;
+				font-size:1rem;
+				left:50%;
+				position:fixed;
+				text-shadow:0 0 3pt Black;
+				text-transform:uppercase;
+				transform:translateX(-50%);
+			}footer>span{
+				color:White;
+				display:block;
+				font-size:3rem;
+				text-transform:none;
+			}
 			header{
 				background-image:url('opr.png'),radial-gradient(ellipse,Black 30%,transparent 70%);
 				background-position:center;
@@ -60,7 +77,7 @@
 			}
 			main{
 				align-items:center;
-				animation:var(--anim);
+				/* animation:var(--anim); */
 				background-image:url('wall.webp');
 				background-position:center;
 				background-repeat:no-repeat;
@@ -71,13 +88,12 @@
 				justify-content:center;
 			}
 			video{
-				animation:var(--anim);
-				animation-delay:.18s;
 				background-color:Black;
 				border:var(--bord);
 				border-radius:var(--rad);
 				box-shadow:var(--shado);
 				height:36vmin;
+				margin:1rem;
 				width:62vmin;
 				z-index:99;
 			}
@@ -85,15 +101,25 @@
 				cursor:none;
 			}.tv button{
 				display:none;
+			}.tv footer{
+				display:block;
 			}.tv header{
 				display:block;
 			}.tv video{
 				background-color:transparent;
 				border:none;
 				border-radius:0;
-				display:none;
+				opacity:0;
 				height:100%;
+				transition:opacity .67s;
 				width:100%;
+			}
+			@media(orientation:portrait){
+				button:first-of-type,video{
+					display:none;
+				}button:last-of-type{
+					display:block;
+				}
 			}
 		</style>
 	</head>
@@ -102,20 +128,24 @@
 			<header></header>
 			<video autoplay muted></video>
 			<button>SHARE MY SCREEN</button>
+			<button>JOIN CALL</button>
+			<footer>Get started at <span>oprsf.ddns.net</span>on your phone or laptop</footer>
 		</main>
 		<script>
 
 			const share=document.getElementsByTagName('button')[0]
-			const sock=new WebSocket('wss://radstar.net:9123')
 			const tv=document.getElementsByTagName('video')[0]
-			let liveStream,peer
+			const zoom=document.getElementsByTagName('button')[1]
+			let liveStream,peer,sock
+
+			newSock()
 
 			async function Streamer(){
 				try{
 					liveStream=await navigator.mediaDevices.getDisplayMedia({video:{displaySurface:'monitor'}})
 					tv.srcObject=liveStream
 					share.textContent='STOP SHARING'
-					peer=new RTCPeerConnection()
+					newPeer()
 					peer.addTrack(liveStream.getVideoTracks()[0],liveStream)
 					onIce(peer)
 					const offer=await peer.createOffer()
@@ -125,12 +155,14 @@
 				}
 			}
 			async function Watcher(msg){
-				peer=new RTCPeerConnection()
+				newPeer()
 				peer.ontrack=track=>{
 					console.log(track)
 					tv.srcObject=track.streams[0]
-					tv.style.display='block'
-					tv.play()
+					tv.oncanplay=()=>{
+						tv.style.opacity=1
+						tv.play()
+					}
 				}
 				onIce(peer)
 
@@ -153,8 +185,27 @@
 				}
 			}
 
+			function newPeer(){
+				if(peer)peer.close()
+				peer=new RTCPeerConnection()
+			}
+
+			function newSock(){
+				try{
+					sock=new WebSocket('ws://localhost:9123')
+					sock.onerror=()=>{
+						newSock()
+					}
+				}catch{
+					setInterval(()=>{
+						newSock()
+					},3000)
+				}
+			}
+
 			sock.onclose=()=>{
 				console.log('Goodbye!')
+				newSock()
 			}
 			sock.onmessage=message=>{
 				console.log(message);
@@ -164,10 +215,14 @@
 						peer.setRemoteDescription(msg)
 						break
 					case'offer':
-						Watcher(msg)
+						if(location.hash)Watcher(msg)
 						break
 					case'stop':
-						tv.style.display='none'
+						location.reload()
+						break
+					case'video':
+						console.log(msg.url)
+						window.open(msg.url)
 						break
 					default:
 						if(msg.candidate){
@@ -183,20 +238,52 @@
 				if(liveStream){
 					liveStream.getTracks().forEach(track=>track.stop())
 					sock.send(JSON.stringify({type:'stop'}))
-					peer.close()
-					liveStream=null
-					share.blur()
-					share.textContent='SHARE MY SCREEN'
+					location.reload()
 				}else{
 					Streamer()
 				}
 			}
 
+			zoom.onclick=()=>{
+				const oldURL=prompt('Enter your invite link:')
+				if(oldURL){
+					if(oldURL.includes('messenger')){
+						const regx=new RegExp("j/([0-9]+)\\?pwd=([^\\s]+)")
+						if(regx.test(oldURL)){
+							const newURL='https://app.zoom.us/wc/'+RegExp.$1+'/join?pwd='+RegExp.$2+'&from=pwa'
+							console.log(newURL)
+							sock.send(JSON.stringify({type:'video',url:newURL}))
+						}
+					}
+					if(oldURL.includes('teams')){
+						const regx=new RegExp("/([0-9]+)\\?p=(.*?)&*")
+						if(regx.test(oldURL)){
+							const newURL='https://teams.live.com/_#/meet/'+RegExp.$1+'?p='+RegExp.$2+'&launchType=web'
+							console.log(newURL)
+							sock.send(JSON.stringify({type:'video',url:newURL}))
+						}
+					}
+					if(oldURL.includes('zoom')){
+						const regx=new RegExp("j/([0-9]+)\\?pwd=([^\\s]+)")
+						if(regx.test(oldURL)){
+							const newURL='https://app.zoom.us/wc/'+RegExp.$1+'/join?pwd='+RegExp.$2+'&from=pwa'
+							console.log(newURL)
+							sock.send(JSON.stringify({type:'video',url:newURL}))
+						}
+					}
+				}
+			}
+
 			if(location.hash){
-				console.log('Watching...')
+				console.log('Watcher...')
 				document.body.parentElement.classList.toggle('tv')
+				setInterval(()=>{
+					if(tv.paused){
+						location.reload()
+					}
+				},10000)
 			}else{
-				console.log('Streaming...')
+				console.log('Streamer...')
 			}
 
 		</script>
