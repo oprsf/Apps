@@ -192,7 +192,7 @@
 
 			function newSock(){
 				try{
-					sock=new WebSocket('ws://localhost:9123')
+					sock=new WebSocket('ws://oprsf.ddns.net:9123')
 					sock.onerror=()=>{
 						newSock()
 					}
